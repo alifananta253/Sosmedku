@@ -1,40 +1,130 @@
 const crypto = require("crypto");
 const admin = require("firebase-admin");
 
-if (!admin.apps.length) {
-  // PENTING: di Vercel jangan pakai file serviceAccountKey.json.
-  // Pakai env FIREBASE_SERVICE_ACCOUNT (string JSON)
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+// --- init firebase sekali saja ---
+function initFirebase() {
+  if (admin.apps.length) return;
+
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!raw) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT env");
+
+  let sa;
+  try {
+    sa = JSON.parse(raw);
+  } catch (e) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
+  }
+
+  // private_key biasanya punya newline; pastikan benar
+  if (sa.private_key && typeof sa.private_key === "string") {
+    sa.private_key = sa.private_key.replace(/\\n/g, "\n");
+  }
+
   admin.initializeApp({ credential: admin.credential.cert(sa) });
 }
-const db = admin.firestore();
+
+async function readRawBody(req) {
+  // Vercel Node runtime: kita baca stream request manual
+  return await new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
 
 module.exports = async (req, res) => {
-  if (req.method === "GET") return res.status(200).send("Tripay callback endpoint ready (POST only)");
-  if (req.method !== "POST") return res.status(405).json({ success: false, message: "Method not allowed" });
+  // GET untuk cek endpoint
+  if (req.method === "GET") {
+    return res.status(200).send("Tripay callback endpoint ready (POST only)");
+  }
+
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["GET", "POST"]);
+    return res.status(405).json({ success: false, message: "Method not allowed" });
+  }
 
   try {
-    const body = req.body || {};
+    initFirebase();
+    const db = admin.firestore();
+
     const got = req.headers["x-callback-signature"] || "";
+    if (!got) return res.status(400).json({ success: false, message: "Missing x-callback-signature" });
 
-    console.log("📩 CALLBACK MASUK", new Date().toISOString());
-    console.log("signature:", got);
-    console.log("body:", body);
+    const privateKey = process.env.TRIPAY_PRIVATE_KEY;
+    if (!privateKey) return res.status(500).json({ success: false, message: "Missing TRIPAY_PRIVATE_KEY env" });
 
-    if (!got || Object.keys(body).length === 0) {
-      return res.status(400).json({ success: false, message: "Empty body/signature" });
+    // ✅ ambil raw body untuk signature
+    const rawBody = await readRawBody(req);
+    if (!rawBody) return res.status(400).json({ success: false, message: "Empty body" });
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return res.status(400).json({ success: false, message: "Body is not valid JSON" });
     }
 
-    // vercel: signature biasanya dihitung dari JSON stringify body
     const expected = crypto
-      .createHmac("sha256", process.env.TRIPAY_PRIVATE_KEY)
-      .update(JSON.stringify(body))
+      .createHmac("sha256", privateKey)
+      .update(rawBody) // ✅ gunakan RAW body, bukan JSON.stringify(object)
       .digest("hex");
 
     if (expected !== got) {
       console.log("❌ SIGNATURE INVALID", { expected, got });
       return res.status(403).json({ success: false, message: "Invalid signature" });
     }
+
+    const merchantRef = String(body.merchant_ref || "");
+    const status = String(body.status || "");
+    const amount = Number(body.amount || 0);
+
+    // merchant_ref format: TOPUP-<uid>-<timestamp>
+    let uid = null;
+    if (merchantRef.startsWith("TOPUP-")) {
+      const withoutPrefix = merchantRef.substring("TOPUP-".length);
+      const lastDash = withoutPrefix.lastIndexOf("-");
+      if (lastDash > 0) uid = withoutPrefix.substring(0, lastDash);
+    }
+    if (!uid) return res.json({ success: true });
+
+    const userRef = db.collection("users").doc(uid);
+    const topupRef = userRef.collection("topups").doc(merchantRef);
+
+    await db.runTransaction(async (t) => {
+      const snap = await t.get(topupRef);
+      const prevStatus = snap.exists ? String(snap.data()?.status || "") : "";
+
+      t.set(
+        topupRef,
+        {
+          status,
+          amount,
+          rawCallback: body,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      if (status === "PAID" && prevStatus !== "PAID") {
+        t.set(
+          userRef,
+          {
+            saldo: admin.firestore.FieldValue.increment(amount),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    });
+
+    console.log("✅ CALLBACK VALID", { merchantRef, status, amount, uid });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error("Callback error:", e);
+    return res.status(500).json({ success: false, message: e?.message || String(e) });
+  }
+};    }
 
     const merchantRef = String(body.merchant_ref || "");
     const status = String(body.status || "");
