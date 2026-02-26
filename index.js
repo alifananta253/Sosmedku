@@ -1,40 +1,41 @@
+// index.js
 'use strict'
+
 const express = require('express')
 const httpErrors = require('http-errors')
 const pino = require('pino')
 const pinoHttp = require('pino-http')
 
-module.exports = function main (options, cb) {
-  // Set default options
-  const ready = cb || function () {}
-  const opts = Object.assign({
-    // Default options
-  }, options)
+const app = express()
+const logger = pino()
 
-  const logger = pino()
+// Middleware
+app.use(pinoHttp({ logger }))
+app.use(express.json()) // penting untuk JSON body
 
-  // Server state
-  let server
-  let serverStarted = false
-  let serverClosing = false
+// Routes
+require('./routes')(app)
 
-  // Setup error handling
-  function unhandledError (err) {
-    // Log the errors
+// 404 handler
+app.use((req, res, next) => {
+  next(httpErrors(404, `Route not found: ${req.url}`))
+})
+
+// Error handler
+app.use((err, req, res, next) => {
+  if (err.status >= 500) {
     logger.error(err)
+  }
+  res.status(err.status || 500).json({
+    messages: [{
+      code: err.code || 'InternalServerError',
+      message: err.message
+    }]
+  })
+})
 
-    // Only clean up once
-    if (serverClosing) {
-      return
-    }
-    serverClosing = true
-
-    // If server has started, close it down
-    if (serverStarted) {
-      server.close(function () {
-        process.exit(1)
-      })
-    }
+// Export Express app sebagai handler serverless
+module.exports = app    }
   }
   process.on('uncaughtException', unhandledError)
   process.on('unhandledRejection', unhandledError)
