@@ -11,41 +11,20 @@ function initFirebase() {
   let sa;
   try {
     sa = JSON.parse(raw);
-  } catch (e) {
+  } catch {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
   }
 
-  // private_key biasanya punya newline; pastikan benar
-  if (sa.private_key && typeof sa.private_key === "string") {
+  if (sa.private_key) {
     sa.private_key = sa.private_key.replace(/\\n/g, "\n");
   }
 
   admin.initializeApp({ credential: admin.credential.cert(sa) });
 }
 
-async function readRawBody(req) {
-  // Vercel Node runtime: kita baca stream request manual
-  return await new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
-}
-
 module.exports = async (req, res) => {
-  // GET untuk cek endpoint
-  if (req.method === "GET") {
-    return res.status(200).send("Tripay callback endpoint ready (POST only)");
-  }
-
-  if (req.method !== "POST") {
-    res.setHeader("Allow", ["GET", "POST"]);
-    return res.status(405).json({ success: false, message: "Method not allowed" });
-  }
-
   try {
-    initFirebase();
+    initFirebase();  // parse env di sini
     const db = admin.firestore();
 
     const got = req.headers["x-callback-signature"] || "";
@@ -120,9 +99,9 @@ module.exports = async (req, res) => {
 
     console.log("✅ CALLBACK VALID", { merchantRef, status, amount, uid });
     return res.json({ success: true });
-  } catch (e) {
+    } catch (e) {
     console.error("Callback error:", e);
-    return res.status(500).json({ success: false, message: e?.message || String(e) });
+    return res.status(500).json({ success: false, message: e.message });
   }
 };    }
 
