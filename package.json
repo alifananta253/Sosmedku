@@ -1,0 +1,33 @@
+{
+  "name": "sosmedku",
+  "version": "1.0.0",
+  "description": "Sosmedku payment gateaway",
+  "author": "Alif661 <alifananta529@gmail.com>",
+  "keywords": [
+    "api",
+    "sosmed",
+    "gateaway"
+  ],
+  "license": "MIT",
+  "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "Sosmedku"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "start": "./bin/app",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "axios": "^1.13.5",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.1",
+    "http-errors": "^2.0.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "pino-pretty": "^13.1.3"
+  }
+}
