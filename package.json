@@ -16,7 +16,7 @@
   },
 
   "engines": {
-    "node": "24.x"
+    "node": "20.x"
   },
 
   "scripts": {
