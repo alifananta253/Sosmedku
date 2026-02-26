@@ -103,7 +103,7 @@ module.exports = async (req, res) => {
     console.error("Callback error:", e);
     return res.status(500).json({ success: false, message: e.message });
   }
-};    }
+};    
 
     const merchantRef = String(body.merchant_ref || "");
     const status = String(body.status || "");
