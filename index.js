@@ -1,3 +1,4 @@
+// index.js
 const express = require("express")
 const httpErrors = require("http-errors")
 const pino = require("pino")
@@ -8,10 +9,10 @@ const logger = pino()
 
 // middleware
 app.use(pinoHttp({ logger }))
-app.use(express.json()) // penting untuk JSON body
+app.use(express.json())
 
 // routes
-require("./routes")(app) 
+require("./routes")(app)
 
 // 404 handler
 app.use((req, res, next) => {
@@ -29,5 +30,5 @@ app.use((err, req, res, next) => {
   })
 })
 
-// **tidak ada app.listen / ready callback**
+// 🚫 tidak ada app.listen / ready
 module.exports = app
