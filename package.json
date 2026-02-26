@@ -2,7 +2,7 @@
   "name": "sosmedku",
   "version": "1.0.0",
   "description": "Sosmedku payment gateaway",
-  "author": "Alif661 <alifananta529@gmail.com>",
+  "author": "Alif Ananta",
   "keywords": [
     "api",
     "sosmed",
@@ -14,9 +14,14 @@
     "type": "git",
     "url": "Sosmedku"
   },
+
+  "engines": {
+    "node": "20.x"
+  },
+
   "scripts": {
     "dev": "node server.js",
-    "start": "./bin/app",
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
